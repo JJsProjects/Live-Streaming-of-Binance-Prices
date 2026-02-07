@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from ..streams.models import AggTrade, Kline, Trade
+from ..streams.models import AggTrade, BookTicker, DepthSnapshot, DepthUpdate, Kline, Trade
 
 
 class BaseStore(ABC):
@@ -22,6 +22,15 @@ class BaseStore(ABC):
 
     @abstractmethod
     async def store_kline(self, kline: Kline) -> None: ...
+
+    @abstractmethod
+    async def store_book_ticker(self, bt: BookTicker) -> None: ...
+
+    @abstractmethod
+    async def store_depth_snapshot(self, depth: DepthSnapshot) -> None: ...
+
+    @abstractmethod
+    async def store_depth_update(self, depth: DepthUpdate) -> None: ...
 
     @abstractmethod
     async def flush_all(self) -> None:

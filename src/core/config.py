@@ -15,6 +15,9 @@ VALID_KLINE_INTERVALS = {
     "1d", "3d", "1w", "1M",
 }
 
+VALID_DEPTH_LEVELS = {5, 10, 20}
+VALID_DEPTH_SPEEDS = {"100ms", "1000ms"}
+
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "config" / "settings.yaml"
 
 
@@ -28,10 +31,26 @@ class KlineConfig:
 
 
 @dataclasses.dataclass
+class DepthSnapshotConfig:
+    enabled: bool = False
+    levels: int = 20
+    speed: str = "100ms"
+
+
+@dataclasses.dataclass
+class DepthUpdateConfig:
+    enabled: bool = False
+    speed: str = "100ms"
+
+
+@dataclasses.dataclass
 class StreamsConfig:
     trade: bool = True
     agg_trade: bool = True
     kline: KlineConfig = dataclasses.field(default_factory=KlineConfig)
+    book_ticker: bool = False
+    depth_snapshot: DepthSnapshotConfig = dataclasses.field(default_factory=DepthSnapshotConfig)
+    depth_update: DepthUpdateConfig = dataclasses.field(default_factory=DepthUpdateConfig)
 
 
 @dataclasses.dataclass
@@ -90,10 +109,27 @@ def _settings_from_dict(raw: dict) -> Settings:
         enabled=kline_raw.get("enabled", True),
         interval=kline_raw.get("interval", "1m"),
     )
+
+    ds_raw = streams_raw.get("depth_snapshot", {})
+    depth_snapshot = DepthSnapshotConfig(
+        enabled=ds_raw.get("enabled", False),
+        levels=ds_raw.get("levels", 20),
+        speed=ds_raw.get("speed", "100ms"),
+    )
+
+    du_raw = streams_raw.get("depth_update", {})
+    depth_update = DepthUpdateConfig(
+        enabled=du_raw.get("enabled", False),
+        speed=du_raw.get("speed", "100ms"),
+    )
+
     streams = StreamsConfig(
         trade=streams_raw.get("trade", True),
         agg_trade=streams_raw.get("agg_trade", True),
         kline=kline,
+        book_ticker=streams_raw.get("book_ticker", False),
+        depth_snapshot=depth_snapshot,
+        depth_update=depth_update,
     )
 
     stor_raw = raw.get("storage", {})
@@ -172,6 +208,27 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Kline interval (e.g. 1m, 5m, 1h)",
     )
     p.add_argument(
+        "--book-ticker",
+        action="store_true",
+        help="Enable the best bid/ask book ticker stream",
+    )
+    p.add_argument(
+        "--depth-snapshot",
+        action="store_true",
+        help="Enable partial order book depth snapshot stream",
+    )
+    p.add_argument(
+        "--depth-levels",
+        type=int,
+        choices=sorted(VALID_DEPTH_LEVELS),
+        help="Depth snapshot levels (5, 10, or 20)",
+    )
+    p.add_argument(
+        "--depth-update",
+        action="store_true",
+        help="Enable incremental order book diff stream",
+    )
+    p.add_argument(
         "--no-storage",
         action="store_true",
         help="Disable data persistence (stream-only mode)",
@@ -206,6 +263,14 @@ def load_settings(argv: list[str] | None = None) -> Settings:
         settings.streams.kline.enabled = False
     if args.kline_interval:
         settings.streams.kline.interval = args.kline_interval
+    if args.book_ticker:
+        settings.streams.book_ticker = True
+    if args.depth_snapshot:
+        settings.streams.depth_snapshot.enabled = True
+    if args.depth_levels:
+        settings.streams.depth_snapshot.levels = args.depth_levels
+    if args.depth_update:
+        settings.streams.depth_update.enabled = True
     if args.no_storage:
         settings.storage.enabled = False
     if args.output_dir:
@@ -230,10 +295,26 @@ def _validate(settings: Settings) -> None:
         )
         sys.exit(1)
 
+    if settings.streams.depth_snapshot.levels not in VALID_DEPTH_LEVELS:
+        print(
+            f"Error: invalid depth levels '{settings.streams.depth_snapshot.levels}'. "
+            f"Valid: {sorted(VALID_DEPTH_LEVELS)}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if settings.streams.depth_snapshot.speed not in VALID_DEPTH_SPEEDS:
+        print(
+            f"Error: invalid depth speed '{settings.streams.depth_snapshot.speed}'. "
+            f"Valid: {sorted(VALID_DEPTH_SPEEDS)}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    s = settings.streams
     any_stream = (
-        settings.streams.trade
-        or settings.streams.agg_trade
-        or settings.streams.kline.enabled
+        s.trade or s.agg_trade or s.kline.enabled
+        or s.book_ticker or s.depth_snapshot.enabled or s.depth_update.enabled
     )
     if not any_stream:
         print("Error: at least one stream must be enabled", file=sys.stderr)

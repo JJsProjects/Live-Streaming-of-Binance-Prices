@@ -95,6 +95,12 @@ class WebSocketManager:
             streams.append(f"{symbol}@aggTrade")
         if s.kline.enabled:
             streams.append(f"{symbol}@kline_{s.kline.interval}")
+        if s.book_ticker:
+            streams.append(f"{symbol}@bookTicker")
+        if s.depth_snapshot.enabled:
+            streams.append(f"{symbol}@depth{s.depth_snapshot.levels}@{s.depth_snapshot.speed}")
+        if s.depth_update.enabled:
+            streams.append(f"{symbol}@depth@{s.depth_update.speed}")
 
         stream_path = "/".join(streams)
         return f"{self._settings.connection.base_url}/stream?streams={stream_path}"
@@ -179,6 +185,23 @@ class WebSocketManager:
             kline = self._handler.parse_kline(data)
             if kline:
                 await self._callbacks.dispatch_kline(kline)
+
+        elif stream_type == "bookTicker":
+            bt = self._handler.parse_book_ticker(data)
+            if bt:
+                await self._callbacks.dispatch_book_ticker(bt)
+
+        elif stream_type.startswith("depth") and stream_type[5:6].isdigit():
+            # Partial depth snapshot: depth5@100ms, depth10@100ms, depth20@100ms
+            snap = self._handler.parse_depth_snapshot(data)
+            if snap:
+                await self._callbacks.dispatch_depth_snapshot(snap)
+
+        elif stream_type.startswith("depth"):
+            # Incremental depth diff: depth@100ms, depth@1000ms
+            upd = self._handler.parse_depth_update(data)
+            if upd:
+                await self._callbacks.dispatch_depth_update(upd)
 
         else:
             logger.warning("unknown_stream_type", stream_type=stream_type)

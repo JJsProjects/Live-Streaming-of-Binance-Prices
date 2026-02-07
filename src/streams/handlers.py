@@ -13,7 +13,7 @@ import time
 
 import structlog
 
-from .models import AggTrade, Kline, Trade
+from .models import AggTrade, BookTicker, DepthSnapshot, DepthUpdate, Kline, Trade
 
 logger = structlog.get_logger()
 
@@ -106,4 +106,34 @@ class MessageHandler:
             return Kline.from_raw(data)
         except (KeyError, ValueError, TypeError) as exc:
             logger.error("kline_parse_error", error=str(exc), keys=list(data.keys()))
+            return None
+
+    # ── order book streams (no event_time → no stale check) ─────────
+
+    def parse_book_ticker(self, data: dict) -> BookTicker | None:
+        try:
+            return BookTicker.from_raw(data)
+        except (KeyError, ValueError, TypeError) as exc:
+            logger.error("book_ticker_parse_error", error=str(exc), keys=list(data.keys()))
+            return None
+
+    def parse_depth_snapshot(self, data: dict) -> DepthSnapshot | None:
+        try:
+            return DepthSnapshot.from_raw(data)
+        except (KeyError, ValueError, TypeError) as exc:
+            logger.error("depth_snapshot_parse_error", error=str(exc), keys=list(data.keys()))
+            return None
+
+    def parse_depth_update(self, data: dict) -> DepthUpdate | None:
+        try:
+            event_time = data["E"]
+            if self._is_stale(event_time):
+                logger.warning(
+                    "stale_depth_update",
+                    adjusted_age_ms=self._adjusted_age(event_time),
+                )
+                return None
+            return DepthUpdate.from_raw(data)
+        except (KeyError, ValueError, TypeError) as exc:
+            logger.error("depth_update_parse_error", error=str(exc), keys=list(data.keys()))
             return None

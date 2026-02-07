@@ -16,7 +16,7 @@ from .core.callbacks import CallbackManager
 from .core.config import Settings, load_settings
 from .storage.parquet_store import ParquetStore
 from .streams.manager import WebSocketManager
-from .streams.models import AggTrade, Kline, Trade
+from .streams.models import AggTrade, BookTicker, DepthSnapshot, DepthUpdate, Kline, Trade
 
 
 def _setup_logging() -> None:
@@ -48,6 +48,18 @@ async def _print_kline(kline: Kline) -> None:
     print(kline)
 
 
+async def _print_book_ticker(bt: BookTicker) -> None:
+    print(bt)
+
+
+async def _print_depth_snapshot(depth: DepthSnapshot) -> None:
+    print(depth)
+
+
+async def _print_depth_update(depth: DepthUpdate) -> None:
+    print(depth)
+
+
 # ── banner ──────────────────────────────────────────────────────────────
 
 
@@ -60,6 +72,12 @@ def _print_banner(settings: Settings) -> None:
         streams.append("aggTrade")
     if s.kline.enabled:
         streams.append(f"kline_{s.kline.interval}")
+    if s.book_ticker:
+        streams.append("bookTicker")
+    if s.depth_snapshot.enabled:
+        streams.append(f"depth{s.depth_snapshot.levels}@{s.depth_snapshot.speed}")
+    if s.depth_update.enabled:
+        streams.append(f"depth@{s.depth_update.speed}")
 
     print()
     print("=" * 60)
@@ -84,6 +102,9 @@ async def _run(settings: Settings) -> None:
     callbacks.on_trade(_print_trade)
     callbacks.on_agg_trade(_print_agg_trade)
     callbacks.on_kline(_print_kline)
+    callbacks.on_book_ticker(_print_book_ticker)
+    callbacks.on_depth_snapshot(_print_depth_snapshot)
+    callbacks.on_depth_update(_print_depth_update)
 
     # Optionally register storage
     storage: ParquetStore | None = None
@@ -92,6 +113,9 @@ async def _run(settings: Settings) -> None:
         callbacks.on_trade(storage.store_trade)
         callbacks.on_agg_trade(storage.store_agg_trade)
         callbacks.on_kline(storage.store_kline)
+        callbacks.on_book_ticker(storage.store_book_ticker)
+        callbacks.on_depth_snapshot(storage.store_depth_snapshot)
+        callbacks.on_depth_update(storage.store_depth_update)
 
     manager = WebSocketManager(settings, callbacks)
 

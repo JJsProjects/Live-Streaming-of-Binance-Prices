@@ -12,7 +12,7 @@ from typing import Any
 
 import structlog
 
-from ..streams.models import AggTrade, Kline, Trade
+from ..streams.models import AggTrade, BookTicker, DepthSnapshot, DepthUpdate, Kline, Trade
 
 logger = structlog.get_logger()
 
@@ -27,6 +27,9 @@ class CallbackManager:
         self._trade_cbs: list[AsyncCallback] = []
         self._agg_trade_cbs: list[AsyncCallback] = []
         self._kline_cbs: list[AsyncCallback] = []
+        self._book_ticker_cbs: list[AsyncCallback] = []
+        self._depth_snapshot_cbs: list[AsyncCallback] = []
+        self._depth_update_cbs: list[AsyncCallback] = []
 
     # ── registration ────────────────────────────────────────────────────
 
@@ -39,6 +42,15 @@ class CallbackManager:
     def on_kline(self, cb: AsyncCallback) -> None:
         self._kline_cbs.append(cb)
 
+    def on_book_ticker(self, cb: AsyncCallback) -> None:
+        self._book_ticker_cbs.append(cb)
+
+    def on_depth_snapshot(self, cb: AsyncCallback) -> None:
+        self._depth_snapshot_cbs.append(cb)
+
+    def on_depth_update(self, cb: AsyncCallback) -> None:
+        self._depth_update_cbs.append(cb)
+
     # ── dispatch ────────────────────────────────────────────────────────
 
     async def dispatch_trade(self, trade: Trade) -> None:
@@ -49,6 +61,15 @@ class CallbackManager:
 
     async def dispatch_kline(self, kline: Kline) -> None:
         await self._dispatch(self._kline_cbs, kline, "kline")
+
+    async def dispatch_book_ticker(self, book_ticker: BookTicker) -> None:
+        await self._dispatch(self._book_ticker_cbs, book_ticker, "book_ticker")
+
+    async def dispatch_depth_snapshot(self, depth: DepthSnapshot) -> None:
+        await self._dispatch(self._depth_snapshot_cbs, depth, "depth_snapshot")
+
+    async def dispatch_depth_update(self, depth: DepthUpdate) -> None:
+        await self._dispatch(self._depth_update_cbs, depth, "depth_update")
 
     # ── internal ────────────────────────────────────────────────────────
 
