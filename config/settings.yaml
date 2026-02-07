@@ -14,6 +14,10 @@ streams:
   depth_update:
     enabled: false
     speed: "100ms"          # 100ms or 1000ms
+  order_book_snapshot:
+    enabled: false
+    limit: 1000             # 5, 10, 20, 50, 100, 500, 1000, 5000
+    interval_seconds: 5     # seconds between REST polls
 
 storage:
   enabled: true
@@ -24,6 +28,7 @@ storage:
 
 connection:
   base_url: "wss://stream.binance.com:9443"
+  rest_base_url: "https://api.binance.com"
   reconnect_delay_base: 1.0
   reconnect_delay_max: 60.0
   reconnect_max_attempts: 0     # 0 = infinite

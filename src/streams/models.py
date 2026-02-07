@@ -1,4 +1,4 @@
-"""Data models for Binance WebSocket stream messages.
+"""Data models for Binance stream messages.
 
 Each model maps to a Binance stream type and converts raw JSON dicts
 (with single-letter keys) into clean, typed Python objects.
@@ -344,4 +344,69 @@ class DepthUpdate:
             f"[DDIFF]  {self.symbol} | "
             f"Bid updates: {len(self.bids):<3} | "
             f"Ask updates: {len(self.asks):<3} | {ts}"
+        )
+
+
+@dataclasses.dataclass
+class OrderBookSnapshot:
+    """Full order book snapshot from REST API GET /api/v3/depth.
+
+    Response keys:
+        lastUpdateId, bids=[[price,qty],...], asks=[[price,qty],...]
+    """
+
+    last_update_id: int
+    symbol: str
+    bids: list[list[float]]  # [[price, qty], ...]
+    asks: list[list[float]]
+    local_time: int = 0
+
+    @classmethod
+    def from_rest(cls, data: dict, symbol: str) -> OrderBookSnapshot:
+        bids = [[float(p), float(q)] for p, q in data["bids"]]
+        asks = [[float(p), float(q)] for p, q in data["asks"]]
+        return cls(
+            last_update_id=data["lastUpdateId"],
+            symbol=symbol.upper(),
+            bids=bids,
+            asks=asks,
+            local_time=int(time.time() * 1000),
+        )
+
+    @property
+    def best_bid(self) -> float:
+        return self.bids[0][0] if self.bids else 0.0
+
+    @property
+    def best_ask(self) -> float:
+        return self.asks[0][0] if self.asks else 0.0
+
+    @property
+    def spread(self) -> float:
+        return self.best_ask - self.best_bid
+
+    def to_dict(self) -> dict:
+        return {
+            "last_update_id": self.last_update_id,
+            "symbol": self.symbol,
+            "local_time": self.local_time,
+            "bid_levels": len(self.bids),
+            "ask_levels": len(self.asks),
+            "bid_prices": [b[0] for b in self.bids],
+            "bid_quantities": [b[1] for b in self.bids],
+            "ask_prices": [a[0] for a in self.asks],
+            "ask_quantities": [a[1] for a in self.asks],
+        }
+
+    def __str__(self) -> str:
+        levels = max(len(self.bids), len(self.asks))
+        ts = datetime.fromtimestamp(
+            self.local_time / 1000, tz=timezone.utc
+        ).strftime("%H:%M:%S.%f")[:-3]
+        return (
+            f"[OBOOK]  {self.symbol} | "
+            f"Levels: {levels:<5} | "
+            f"Best Bid: {self.best_bid:<12.4f} | "
+            f"Best Ask: {self.best_ask:<12.4f} | "
+            f"Spread: {self.spread:.4f} | {ts}"
         )

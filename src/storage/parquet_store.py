@@ -19,7 +19,7 @@ import pyarrow.parquet as pq
 import structlog
 
 from ..core.config import StorageConfig
-from ..streams.models import AggTrade, BookTicker, DepthSnapshot, DepthUpdate, Kline, Trade
+from ..streams.models import AggTrade, BookTicker, DepthSnapshot, DepthUpdate, Kline, OrderBookSnapshot, Trade
 from .base import BaseStore
 
 logger = structlog.get_logger()
@@ -41,6 +41,7 @@ class ParquetStore(BaseStore):
             "book_ticker": [],
             "depth_snapshot": [],
             "depth_update": [],
+            "order_book_snapshot": [],
         }
         self._last_flush: dict[str, float] = {
             k: time.monotonic() for k in self._buffers
@@ -71,6 +72,10 @@ class ParquetStore(BaseStore):
     async def store_depth_update(self, depth: DepthUpdate) -> None:
         self._buffers["depth_update"].append(depth.to_dict())
         await self._maybe_flush("depth_update")
+
+    async def store_order_book_snapshot(self, snapshot: OrderBookSnapshot) -> None:
+        self._buffers["order_book_snapshot"].append(snapshot.to_dict())
+        await self._maybe_flush("order_book_snapshot")
 
     # ── periodic flush loop (run as background task) ────────────────────
 

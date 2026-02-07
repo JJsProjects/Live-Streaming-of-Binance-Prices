@@ -12,7 +12,7 @@ from typing import Any
 
 import structlog
 
-from ..streams.models import AggTrade, BookTicker, DepthSnapshot, DepthUpdate, Kline, Trade
+from ..streams.models import AggTrade, BookTicker, DepthSnapshot, DepthUpdate, Kline, OrderBookSnapshot, Trade
 
 logger = structlog.get_logger()
 
@@ -30,6 +30,7 @@ class CallbackManager:
         self._book_ticker_cbs: list[AsyncCallback] = []
         self._depth_snapshot_cbs: list[AsyncCallback] = []
         self._depth_update_cbs: list[AsyncCallback] = []
+        self._order_book_snapshot_cbs: list[AsyncCallback] = []
 
     # ── registration ────────────────────────────────────────────────────
 
@@ -51,6 +52,9 @@ class CallbackManager:
     def on_depth_update(self, cb: AsyncCallback) -> None:
         self._depth_update_cbs.append(cb)
 
+    def on_order_book_snapshot(self, cb: AsyncCallback) -> None:
+        self._order_book_snapshot_cbs.append(cb)
+
     # ── dispatch ────────────────────────────────────────────────────────
 
     async def dispatch_trade(self, trade: Trade) -> None:
@@ -70,6 +74,9 @@ class CallbackManager:
 
     async def dispatch_depth_update(self, depth: DepthUpdate) -> None:
         await self._dispatch(self._depth_update_cbs, depth, "depth_update")
+
+    async def dispatch_order_book_snapshot(self, snapshot: OrderBookSnapshot) -> None:
+        await self._dispatch(self._order_book_snapshot_cbs, snapshot, "order_book_snapshot")
 
     # ── internal ────────────────────────────────────────────────────────
 

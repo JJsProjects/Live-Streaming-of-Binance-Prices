@@ -17,6 +17,7 @@ VALID_KLINE_INTERVALS = {
 
 VALID_DEPTH_LEVELS = {5, 10, 20}
 VALID_DEPTH_SPEEDS = {"100ms", "1000ms"}
+VALID_OB_LIMITS = {5, 10, 20, 50, 100, 500, 1000, 5000}
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "config" / "settings.yaml"
 
@@ -44,6 +45,13 @@ class DepthUpdateConfig:
 
 
 @dataclasses.dataclass
+class OrderBookSnapshotConfig:
+    enabled: bool = False
+    limit: int = 1000
+    interval_seconds: float = 5.0
+
+
+@dataclasses.dataclass
 class StreamsConfig:
     trade: bool = True
     agg_trade: bool = True
@@ -51,6 +59,7 @@ class StreamsConfig:
     book_ticker: bool = False
     depth_snapshot: DepthSnapshotConfig = dataclasses.field(default_factory=DepthSnapshotConfig)
     depth_update: DepthUpdateConfig = dataclasses.field(default_factory=DepthUpdateConfig)
+    order_book_snapshot: OrderBookSnapshotConfig = dataclasses.field(default_factory=OrderBookSnapshotConfig)
 
 
 @dataclasses.dataclass
@@ -65,6 +74,7 @@ class StorageConfig:
 @dataclasses.dataclass
 class ConnectionConfig:
     base_url: str = "wss://stream.binance.com:9443"
+    rest_base_url: str = "https://api.binance.com"
     reconnect_delay_base: float = 1.0
     reconnect_delay_max: float = 60.0
     reconnect_max_attempts: int = 0
@@ -123,6 +133,13 @@ def _settings_from_dict(raw: dict) -> Settings:
         speed=du_raw.get("speed", "100ms"),
     )
 
+    ob_raw = streams_raw.get("order_book_snapshot", {})
+    order_book_snapshot = OrderBookSnapshotConfig(
+        enabled=ob_raw.get("enabled", False),
+        limit=ob_raw.get("limit", 1000),
+        interval_seconds=ob_raw.get("interval_seconds", 5.0),
+    )
+
     streams = StreamsConfig(
         trade=streams_raw.get("trade", True),
         agg_trade=streams_raw.get("agg_trade", True),
@@ -130,6 +147,7 @@ def _settings_from_dict(raw: dict) -> Settings:
         book_ticker=streams_raw.get("book_ticker", False),
         depth_snapshot=depth_snapshot,
         depth_update=depth_update,
+        order_book_snapshot=order_book_snapshot,
     )
 
     stor_raw = raw.get("storage", {})
@@ -144,6 +162,7 @@ def _settings_from_dict(raw: dict) -> Settings:
     conn_raw = raw.get("connection", {})
     connection = ConnectionConfig(
         base_url=conn_raw.get("base_url", "wss://stream.binance.com:9443"),
+        rest_base_url=conn_raw.get("rest_base_url", "https://api.binance.com"),
         reconnect_delay_base=conn_raw.get("reconnect_delay_base", 1.0),
         reconnect_delay_max=conn_raw.get("reconnect_delay_max", 60.0),
         reconnect_max_attempts=conn_raw.get("reconnect_max_attempts", 0),
@@ -229,6 +248,22 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Enable incremental order book diff stream",
     )
     p.add_argument(
+        "--order-book-snapshot",
+        action="store_true",
+        help="Enable full order book REST API polling",
+    )
+    p.add_argument(
+        "--order-book-limit",
+        type=int,
+        choices=sorted(VALID_OB_LIMITS),
+        help="Order book depth limit (5, 10, 20, 50, 100, 500, 1000, 5000)",
+    )
+    p.add_argument(
+        "--order-book-interval",
+        type=float,
+        help="Order book polling interval in seconds (e.g. 5.0)",
+    )
+    p.add_argument(
         "--no-storage",
         action="store_true",
         help="Disable data persistence (stream-only mode)",
@@ -271,6 +306,12 @@ def load_settings(argv: list[str] | None = None) -> Settings:
         settings.streams.depth_snapshot.levels = args.depth_levels
     if args.depth_update:
         settings.streams.depth_update.enabled = True
+    if args.order_book_snapshot:
+        settings.streams.order_book_snapshot.enabled = True
+    if args.order_book_limit:
+        settings.streams.order_book_snapshot.limit = args.order_book_limit
+    if args.order_book_interval:
+        settings.streams.order_book_snapshot.interval_seconds = args.order_book_interval
     if args.no_storage:
         settings.storage.enabled = False
     if args.output_dir:
@@ -311,10 +352,23 @@ def _validate(settings: Settings) -> None:
         )
         sys.exit(1)
 
+    if settings.streams.order_book_snapshot.limit not in VALID_OB_LIMITS:
+        print(
+            f"Error: invalid order book limit '{settings.streams.order_book_snapshot.limit}'. "
+            f"Valid: {sorted(VALID_OB_LIMITS)}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if settings.streams.order_book_snapshot.interval_seconds <= 0:
+        print("Error: order book interval must be > 0", file=sys.stderr)
+        sys.exit(1)
+
     s = settings.streams
     any_stream = (
         s.trade or s.agg_trade or s.kline.enabled
         or s.book_ticker or s.depth_snapshot.enabled or s.depth_update.enabled
+        or s.order_book_snapshot.enabled
     )
     if not any_stream:
         print("Error: at least one stream must be enabled", file=sys.stderr)
